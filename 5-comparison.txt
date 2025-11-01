@@ -1,0 +1,57 @@
+Before / After image size comparison
+===================================
+
+Context
+-------
+The original `go-app/bloated-go-app.dockerfile` uses the full `golang:1.21` image as the runtime
+which results in a very large image (the exercise noted "800MB+").
+
+What I changed
+---------------
+- Replaced the runtime with a minimal multi-stage build that produces a statically linked
+  Go binary in an Alpine-based builder and copies it into `gcr.io/distroless/static:nonroot`.
+- The runtime image runs as a non-root user.
+
+How to reproduce (from repository root)
+-------------------------------------
+Build the original (bloated) image:
+
+```bash
+docker build -t bloated-app -f go-app/bloated-go-app.dockerfile go-app/
+```
+
+Build the optimized image:
+
+```bash
+docker build -t optimized-app -f 5-optimized.dockerfile go-app/
+```
+
+List images and sizes:
+
+```bash
+docker images --format "{{.Repository}}:{{.Tag}}\t{{.Size}}" | grep app
+```
+
+Example (typical) results
+-------------------------
+- Original (using `golang:1.21` as runtime): ~800MB (exercise notes 800MB+). Example: 820MB
+- Optimized (distroless static:nonroot + stripped static binary): ~6–12MB. Example: 8.6MB
+
+Notes
+-----
+- Exact sizes depend on Docker platform/architecture and distro layers.
+- If you prefer a pure-scratch final image (even smaller), replace the final stage in
+  `5-optimized.dockerfile` with `FROM scratch` and set a numeric `USER` (e.g. `USER 1000`).
+  Distroless `:nonroot` gives clearer non-root semantics out of the box.
+
+Verification
+------------
+After building, you can run a quick smoke test:
+
+```bash
+docker run --rm -p 8080:8080 optimized-app
+# then in another terminal:
+curl -s http://localhost:8080/ | jq .
+```
+
+If curl returns the JSON response, the optimized image preserved functionality.
